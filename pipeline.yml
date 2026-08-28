@@ -1,0 +1,50 @@
+name: YouTube Shorts Auto Pipeline
+
+# Runs automatically twice a day (roughly 12 hours apart) — free, forever,
+# even if your computer is off. You can also trigger it manually anytime
+# from the GitHub "Actions" tab.
+on:
+  schedule:
+    - cron: "0 13 * * *"   # ~9am US Eastern
+    - cron: "0 1 * * *"    # ~9pm US Eastern
+  workflow_dispatch: {}     # lets you click "Run workflow" manually too
+
+jobs:
+  make-and-upload-short:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed so the bot can save used_topics.json back to the repo
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore YouTube login token
+        run: echo "${{ secrets.YT_TOKEN_PICKLE_B64 }}" | base64 -d > token.pickle
+
+      - name: Restore YouTube client secret
+        run: echo "${{ secrets.YT_CLIENT_SECRET_B64 }}" | base64 -d > client_secret.json
+
+      - name: Run full pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        run: python3 run_pipeline.py
+
+      - name: Save used-topics list back to the repo
+        run: |
+          git config user.name "facts-shorts-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add used_topics.json
+          git diff --cached --quiet || git commit -m "Update used topics list"
+          git push
