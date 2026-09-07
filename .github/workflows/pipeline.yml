@@ -5,8 +5,11 @@ name: YouTube Shorts Auto Pipeline
 # from the GitHub "Actions" tab.
 on:
   schedule:
-    - cron: "0 13 * * *"   # ~9am US Eastern
-    - cron: "0 1 * * *"    # ~9pm US Eastern
+    - cron: "0 12 * * *"   # ~8am US Eastern
+    - cron: "0 16 * * *"   # ~12pm US Eastern
+    - cron: "0 20 * * *"   # ~4pm US Eastern
+    - cron: "0 23 * * *"   # ~7pm US Eastern
+    - cron: "0 2 * * *"    # ~10pm US Eastern (previous day, UTC rolls to next day)
   workflow_dispatch: {}     # lets you click "Run workflow" manually too
 
 jobs:
