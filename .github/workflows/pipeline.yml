@@ -48,6 +48,6 @@ jobs:
         run: |
           git config user.name "facts-shorts-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add used_topics.json
+                    git add used_topics.json generated_topics.json
           git diff --cached --quiet || git commit -m "Update used topics list"
           git push
