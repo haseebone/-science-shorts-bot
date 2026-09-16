@@ -1,14 +1,17 @@
 """
 YouTube Shorts Topic Finder — "Science Explained" Niche (USA audience)
 ------------------------------------------------------------
-Pulls interesting science/education questions and explainer topics
-from Reddit, with a built-in fallback list so it never gets stuck.
+Order of attempts, each one free:
+  1. Reddit (hot + new + top:week + top:month) across 5 subreddits
+  2. Saved fallback topics (static list + auto-grown list from step 3)
+  3. Gemini generates a fresh batch of topics on the fly (free tier)
 
-Guarantee: this script will NEVER output a topic that's already in
-used_topics.json. If Reddit has nothing fresh AND the fallback list
-is fully used up, it stops the run instead of repeating a topic.
+Guarantee: never outputs a topic already in used_topics.json.
+Only stops the run if ALL THREE sources are exhausted (extremely rare).
 
 Output: topics.json
+Side effect: may grow generated_topics.json (new AI-made topics saved
+for reuse later — commit this file back to the repo, same as used_topics.json)
 """
 
 import requests
@@ -17,6 +20,7 @@ import re
 import os
 import sys
 import random
+import time
 from datetime import datetime, timezone
 
 SUBREDDITS = [
@@ -26,6 +30,9 @@ SUBREDDITS = [
     "space",
     "todayilearned",
 ]
+
+LISTINGS = ["hot", "new", "top"]          # pull all three
+TOP_TIME_WINDOWS = ["week", "month"]       # only used for the "top" listing
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -82,29 +89,32 @@ FALLBACK_TOPICS = [
     "Why do we lose taste when we have a cold",
 ]
 
+GENERATED_TOPICS_FILE = "generated_topics.json"
+GEMINI_MODEL = "gemini-1.5-flash"  # free-tier model
+
+
 def clean_title(title: str) -> str:
-    """Strip TIL/ELI5 prefixes and normalize punctuation so matching is reliable."""
     title = re.sub(r'^\s*(TIL|ELI5)\s*[:\-]?\s*(that\s+)?', '', title, flags=re.IGNORECASE)
-    title = title.strip()
-    return title
+    return title.strip()
+
 
 def normalize(topic: str) -> str:
-    """Used ONLY for comparison, not for display/storage. Strips punctuation,
-    collapses whitespace, lowercases — so 'Why is the sky blue?' and
-    'why is the sky blue' are correctly treated as the same topic."""
     t = topic.lower()
     t = re.sub(r'[^\w\s]', '', t)
     t = re.sub(r'\s+', ' ', t).strip()
     return t
 
-def fetch_subreddit_hot(subreddit: str, limit: int = 10):
-    url = f"https://www.reddit.com/r/{subreddit}/hot.json?limit={limit}"
+
+def fetch_listing(subreddit: str, listing: str, time_window: str = None, limit: int = 15):
+    url = f"https://www.reddit.com/r/{subreddit}/{listing}.json?limit={limit}"
+    if listing == "top" and time_window:
+        url += f"&t={time_window}"
     try:
         resp = requests.get(url, headers=HEADERS, timeout=10)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"  [!] Could not fetch r/{subreddit}: {e}")
+        print(f"  [!] Could not fetch r/{subreddit} ({listing}{'/' + time_window if time_window else ''}): {e}")
         return []
 
     posts = []
@@ -118,30 +128,95 @@ def fetch_subreddit_hot(subreddit: str, limit: int = 10):
             continue
         posts.append({
             "topic": clean_title(title),
-            "source": f"r/{subreddit}",
+            "source": f"r/{subreddit} ({listing}{'/' + time_window if time_window else ''})",
             "upvotes": score,
             "url": f"https://reddit.com{post.get('permalink', '')}"
         })
     return posts
 
+
+def fetch_all_reddit_topics():
+    all_topics = []
+    for sub in SUBREDDITS:
+        for listing in LISTINGS:
+            if listing == "top":
+                for window in TOP_TIME_WINDOWS:
+                    print(f"  -> Checking r/{sub} (top/{window}) ...")
+                    all_topics.extend(fetch_listing(sub, "top", window))
+                    time.sleep(0.5)  # be polite to Reddit's servers
+            else:
+                print(f"  -> Checking r/{sub} ({listing}) ...")
+                all_topics.extend(fetch_listing(sub, listing))
+                time.sleep(0.5)
+    return all_topics
+
+
 def load_used_topics():
-    """Returns a set of NORMALIZED used topics for safe comparison."""
     if os.path.exists("used_topics.json"):
         with open("used_topics.json", "r") as f:
             raw = json.load(f)
         return set(normalize(t) for t in raw)
     return set()
 
+
+def load_generated_topics():
+    """Previously AI-generated topics saved from earlier runs."""
+    if os.path.exists(GENERATED_TOPICS_FILE):
+        with open(GENERATED_TOPICS_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+
+def save_generated_topics(topics_list):
+    with open(GENERATED_TOPICS_FILE, "w") as f:
+        json.dump(topics_list, f, indent=2)
+
+
+def generate_topics_with_gemini(used_topics: set, count: int = 20):
+    """Ask Gemini (free tier) to invent a fresh batch of short-form science
+    explainer topics that avoid everything already used. Returns a list of
+    plain topic strings, or [] on any failure (never crashes the pipeline)."""
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("  [!] GEMINI_API_KEY not set — cannot auto-generate topics.")
+        return []
+
+    avoid_sample = list(used_topics)[:60]  # keep prompt a reasonable size
+    prompt = (
+        f"Generate {count} short, curiosity-driven science/education topics "
+        f"suitable for 60-second YouTube Shorts explainers, aimed at a US "
+        f"general audience. Style examples: 'Why is the sky blue', "
+        f"'How do vaccines actually work'. Cover varied subjects: physics, "
+        f"biology, space, chemistry, psychology, everyday technology, animals, "
+        f"the human body, weather, geology. Do NOT repeat or closely resemble "
+        f"any of these already-used topics: {avoid_sample}. "
+        f"Reply with ONLY a JSON array of {count} plain topic strings, no "
+        f"markdown, no numbering, no extra text."
+    )
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
+    body = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    try:
+        resp = requests.post(url, json=body, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        text = text.strip()
+        text = re.sub(r'^```json\s*|\s*```$', '', text, flags=re.MULTILINE).strip()
+        topics = json.loads(text)
+        if isinstance(topics, list):
+            return [str(t).strip() for t in topics if str(t).strip()]
+        return []
+    except Exception as e:
+        print(f"  [!] Gemini topic generation failed: {e}")
+        return []
+
+
 def main():
     print("Fetching science/education topics for US audience...\n")
     used_topics = load_used_topics()
-    all_topics = []
-
-    for sub in SUBREDDITS:
-        print(f"  -> Checking r/{sub} ...")
-        posts = fetch_subreddit_hot(sub, limit=10)
-        all_topics.extend(posts)
-
+    all_topics = fetch_all_reddit_topics()
     all_topics.sort(key=lambda x: x["upvotes"], reverse=True)
 
     seen = set()
@@ -156,18 +231,28 @@ def main():
             break
 
     if not final_topics:
-        print("\n  [!] No fresh Reddit topics — checking backup topic list.\n")
-        available_fallbacks = [
-            t for t in FALLBACK_TOPICS if normalize(t) not in used_topics
-        ]
+        print("\n  [!] No fresh Reddit topics — checking saved fallback list.\n")
+
+        generated_pool = load_generated_topics()
+        combined_fallbacks = FALLBACK_TOPICS + generated_pool
+        available_fallbacks = [t for t in combined_fallbacks if normalize(t) not in used_topics]
 
         if not available_fallbacks:
-            # Every Reddit topic AND every fallback topic has already been
-            # posted. Do NOT reuse an old topic — stop the run instead.
-            print("  [!] All Reddit and fallback topics have been used.")
-            print("  [!] Add more topics to FALLBACK_TOPICS to keep the channel running.")
-            print("  [!] Stopping this run WITHOUT producing a duplicate topic.\n")
-            sys.exit(1)
+            print("  [!] Static + saved fallback topics exhausted.")
+            print("  [!] Asking Gemini to generate new topics (free tier)...\n")
+            new_topics = generate_topics_with_gemini(used_topics, count=20)
+            new_topics = [t for t in new_topics if normalize(t) not in used_topics]
+
+            if new_topics:
+                # Save the newly generated batch so future runs can reuse it too
+                updated_pool = generated_pool + new_topics
+                save_generated_topics(updated_pool)
+                available_fallbacks = new_topics
+                print(f"  [+] Generated {len(new_topics)} new topics and saved them for future runs.\n")
+            else:
+                print("  [!] Gemini generation also failed or returned nothing usable.")
+                print("  [!] Stopping this run WITHOUT producing a duplicate topic.\n")
+                sys.exit(1)
 
         chosen = random.choice(available_fallbacks)
         final_topics = [{"topic": chosen, "source": "fallback list", "upvotes": 0, "url": ""}]
@@ -186,6 +271,7 @@ def main():
     print("Top 5 picks:")
     for i, t in enumerate(final_topics[:5], 1):
         print(f"  {i}. {t['topic']}  (from {t['source']}, {t['upvotes']} upvotes)")
+
 
 if __name__ == "__main__":
     main()
