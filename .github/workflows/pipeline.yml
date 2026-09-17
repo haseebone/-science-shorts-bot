@@ -44,10 +44,11 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: python3 run_pipeline.py
 
-            - name: Save used-topics list back to the repo
+               - name: Save used-topics list back to the repo
         run: |
           git config user.name "facts-shorts-bot"
           git config user.email "bot@users.noreply.github.com"
           git add used_topics.json
+          [ -f generated_topics.json ] && git add generated_topics.json
           git diff --cached --quiet || git commit -m "Update used topics list"
           git push
