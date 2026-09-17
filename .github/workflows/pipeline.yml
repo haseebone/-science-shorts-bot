@@ -44,7 +44,7 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: python3 run_pipeline.py
 
-               - name: Save used-topics list back to the repo
+      - name: Save used-topics list back to the repo
         run: |
           git config user.name "facts-shorts-bot"
           git config user.email "bot@users.noreply.github.com"
