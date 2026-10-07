@@ -254,3 +254,80 @@ def generate_topics_with_gemini(avoid_topics, count=GEMINI_BATCH_SIZE):
                     break
                 text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
                 text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
+                topics = json.loads(text)
+                if isinstance(topics, list):
+                    cleaned = [str(t).strip() for t in topics if str(t).strip()]
+                    if cleaned:
+                        print(f"  [+] Gemini ({model}) returned {len(cleaned)} topics.")
+                        return cleaned
+                print(f"  [!] {model} returned unusable output.")
+                break
+            except Exception as e:
+                print(f"  [!] {model} attempt {attempt + 1} failed: {e}")
+                time.sleep(3)
+        print(f"  [i] Moving on from {model}...")
+    return []
+
+
+# ---- Main ------------------------------------------------------------------
+def main():
+    print("Finding a fresh science topic...\n")
+
+    used = load_json_list(USED_TOPICS_FILE)
+    checker = DuplicateChecker(used)
+    generated_pool = load_json_list(GENERATED_TOPICS_FILE)
+
+    pool = FALLBACK_TOPICS + generated_pool
+    available = [t for t in pool if not checker.is_duplicate(t)]
+    print(f"  Used topics: {len(used)} | Unused in saved pool: {len(available)}")
+
+    source = "saved pool"
+
+    # Top up from Gemini when the pool is running low
+    if len(available) < LOW_POOL_THRESHOLD:
+        print("\n  [i] Pool is low — asking Gemini for new topics...\n")
+        avoid = used[-250:] + generated_pool[-100:]
+        new_topics = generate_topics_with_gemini(avoid)
+
+        accepted = []
+        pool_checker = DuplicateChecker(used + pool)  # avoid used AND pool
+        for t in new_topics:
+            if not pool_checker.is_duplicate(t):
+                accepted.append(t)
+                pool_checker.add(t)  # also blocks near-duplicates within the batch
+
+        if accepted:
+            save_generated_topics(generated_pool + accepted)
+            available += accepted
+            source = "gemini"
+            print(f"  [+] Saved {len(accepted)} new topics for future runs.\n")
+
+    # Offline last resort
+    if not available:
+        print("  [!] Gemini gave nothing — using offline generator.\n")
+        available = [t for t in offline_topics() if not checker.is_duplicate(t)]
+        source = "offline generator"
+
+    if not available:
+        print("  [!] Every source is exhausted. Stopping WITHOUT a duplicate topic.")
+        sys.exit(1)
+
+    chosen = random.choice(available)
+    record_used_topic(chosen)
+
+    final_topics = [{"topic": chosen, "source": source, "upvotes": 0, "url": ""}]
+
+    output = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "audience": "USA",
+        "niche": "science_explained",
+        "topics": final_topics,
+    }
+    with open("topics.json", "w") as f:
+        json.dump(output, f, indent=2)
+
+    print(f"Done! Chosen topic: {chosen}  (from {source})")
+
+
+if __name__ == "__main__":
+    main()
