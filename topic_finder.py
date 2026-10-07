@@ -7,10 +7,12 @@ Sources, in order:
   3. Offline template generator (no network needed)
 
 Guarantee: never picks a topic that exactly or closely matches anything
-in used_topics.json. Exits with an error only if every source is exhausted.
+in used_topics.json. The chosen topic is written to used_topics.json
+immediately. Exits with an error only if every source is exhausted.
 
-Output: topics.json (same format as before)
-Side effect: grows generated_topics.json (commit it back to the repo)
+Output: topics.json
+Side effects: updates used_topics.json, may grow generated_topics.json
+(commit both back to the repo in your workflow)
 """
 
 import requests
@@ -23,6 +25,7 @@ import time
 from datetime import datetime, timezone
 
 GENERATED_TOPICS_FILE = "generated_topics.json"
+USED_TOPICS_FILE = "used_topics.json"
 GEMINI_MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]
 LOW_POOL_THRESHOLD = 10   # ask Gemini for more when fewer unused topics remain
 GEMINI_BATCH_SIZE = 40
@@ -121,39 +124,58 @@ STOPWORDS = {
     "we", "you", "your", "our", "it", "its", "to", "of", "in", "on", "at",
     "and", "or", "actually", "really", "so", "can", "cant", "when", "that",
     "this", "with", "for", "from", "by", "as", "be", "i", "my", "us", "they",
-    "their", "work", "works",
+    "their", "work", "works", "get", "gets", "cause", "causes", "instead",
+    "even", "much", "many", "every", "single", "if", "than", "then",
 }
 
 
 def normalize(topic: str) -> str:
-    t = str(topic).lower()
+    t = str(topic).lower().replace("-", " ")
     t = re.sub(r"[^\w\s]", "", t)
     return re.sub(r"\s+", " ", t).strip()
 
 
+def stem(w: str) -> str:
+    """Crude stemmer so 'geysers'/'geyser', 'freezing'/'freeze' match."""
+    if len(w) > 4 and w.endswith("ies"):
+        w = w[:-3] + "y"
+    elif len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+        w = w[:-1]
+    if len(w) > 5 and w.endswith("ing"):
+        w = w[:-3]
+    elif len(w) > 4 and w.endswith("ed"):
+        w = w[:-2]
+    if len(w) > 3 and w.endswith("e"):
+        w = w[:-1]
+    if len(w) > 3 and w[-1] == w[-2]:
+        w = w[:-1]
+    return w
+
+
 def keywords(topic: str) -> set:
-    return {w for w in normalize(topic).split() if w not in STOPWORDS}
+    return {stem(w) for w in normalize(topic).split() if w not in STOPWORDS}
 
 
 class DuplicateChecker:
-    """Exact match, or one topic's keywords almost fully contained in another's."""
+    """Exact match, OR sharing at least 2 key words that make up 60%+ of the
+    shorter topic's key words (catches reworded versions of the same question)."""
+
+    THRESHOLD = 0.6
 
     def __init__(self, used_topics):
         self.norms = {normalize(t) for t in used_topics}
         self.kws = [keywords(t) for t in used_topics]
 
     def is_duplicate(self, topic: str) -> bool:
-        n = normalize(topic)
-        if n in self.norms:
+        if normalize(topic) in self.norms:
             return True
         k = keywords(topic)
-        if len(k) < 2:
+        if not k:
             return False
         for u in self.kws:
-            if len(u) < 2:
-                continue
-            overlap = len(k & u) / min(len(k), len(u))
-            if overlap >= 0.8:
+            shared = len(k & u)
+            smaller = min(len(k), len(u))
+            if smaller >= 2 and shared >= 2 and shared / smaller >= self.THRESHOLD:
                 return True
         return False
 
@@ -180,14 +202,24 @@ def save_generated_topics(topics_list):
         json.dump(topics_list, f, indent=2)
 
 
+def record_used_topic(topic: str):
+    """Write the chosen topic to used_topics.json right away, so it can
+    never be picked again even if a later pipeline step fails."""
+    used = load_json_list(USED_TOPICS_FILE)
+    if normalize(topic) not in {normalize(u) for u in used}:
+        used.append(topic)
+        with open(USED_TOPICS_FILE, "w") as f:
+            json.dump(used, f, indent=2)
+        print(f"  [+] Recorded '{topic}' in {USED_TOPICS_FILE}")
+
+
 # ---- Gemini ----------------------------------------------------------------
-def generate_topics_with_gemini(used_topics, count=GEMINI_BATCH_SIZE):
+def generate_topics_with_gemini(avoid_topics, count=GEMINI_BATCH_SIZE):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("  [!] GEMINI_API_KEY not set — cannot auto-generate topics.")
         return []
 
-    sample = random.sample(used_topics, min(80, len(used_topics))) if used_topics else []
     prompt = (
         f"Generate {count} short, curiosity-driven science/education topics "
         f"suitable for 60-second YouTube Shorts explainers, aimed at a US "
@@ -195,8 +227,9 @@ def generate_topics_with_gemini(used_topics, count=GEMINI_BATCH_SIZE):
         f"'How do vaccines actually work'. Cover varied subjects: physics, "
         f"biology, space, chemistry, psychology, everyday technology, animals, "
         f"the human body, weather, geology. Every topic must be clearly "
-        f"different from each other. Do NOT repeat or closely resemble any of "
-        f"these already-used topics: {sample}. "
+        f"different from each other. Do NOT repeat, reword, or closely "
+        f"resemble any of these already-used topics (a reworded version of "
+        f"the same question counts as a repeat): {avoid_topics}. "
         f"Reply with ONLY a JSON array of {count} plain topic strings."
     )
     body = {
@@ -221,77 +254,3 @@ def generate_topics_with_gemini(used_topics, count=GEMINI_BATCH_SIZE):
                     break
                 text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
                 text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
-                topics = json.loads(text)
-                if isinstance(topics, list):
-                    cleaned = [str(t).strip() for t in topics if str(t).strip()]
-                    if cleaned:
-                        print(f"  [+] Gemini ({model}) returned {len(cleaned)} topics.")
-                        return cleaned
-                print(f"  [!] {model} returned unusable output.")
-                break
-            except Exception as e:
-                print(f"  [!] {model} attempt {attempt + 1} failed: {e}")
-                time.sleep(3)
-        print(f"  [i] Moving on from {model}...")
-    return []
-
-
-# ---- Main ------------------------------------------------------------------
-def main():
-    print("Finding a fresh science topic...\n")
-
-    used = load_json_list("used_topics.json")
-    checker = DuplicateChecker(used)
-    generated_pool = load_json_list(GENERATED_TOPICS_FILE)
-
-    pool = FALLBACK_TOPICS + generated_pool
-    available = [t for t in pool if not checker.is_duplicate(t)]
-    print(f"  Used topics: {len(used)} | Unused in saved pool: {len(available)}")
-
-    source = "saved pool"
-
-    # Top up from Gemini when the pool is running low
-    if len(available) < LOW_POOL_THRESHOLD:
-        print("\n  [i] Pool is low — asking Gemini for new topics...\n")
-        new_topics = generate_topics_with_gemini(used + pool)
-
-        accepted = []
-        pool_checker = DuplicateChecker(used + pool)  # also avoid duplicating the pool
-        for t in new_topics:
-            if not pool_checker.is_duplicate(t):
-                accepted.append(t)
-                pool_checker.add(t)  # avoid near-duplicates within the batch too
-
-        if accepted:
-            save_generated_topics(generated_pool + accepted)
-            available += accepted
-            source = "gemini"
-            print(f"  [+] Saved {len(accepted)} new topics for future runs.\n")
-
-    # Offline last resort
-    if not available:
-        print("  [!] Gemini gave nothing — using offline generator.\n")
-        available = [t for t in offline_topics() if not checker.is_duplicate(t)]
-        source = "offline generator"
-
-    if not available:
-        print("  [!] Every source is exhausted. Stopping WITHOUT a duplicate topic.")
-        sys.exit(1)
-
-    chosen = random.choice(available)
-    final_topics = [{"topic": chosen, "source": source, "upvotes": 0, "url": ""}]
-
-    output = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "audience": "USA",
-        "niche": "science_explained",
-        "topics": final_topics,
-    }
-    with open("topics.json", "w") as f:
-        json.dump(output, f, indent=2)
-
-    print(f"Done! Chosen topic: {chosen}  (from {source})")
-
-
-if __name__ == "__main__":
-    main()
