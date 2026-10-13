@@ -1,10 +1,11 @@
 name: YouTube Shorts Auto Pipeline
 
-# Runs once a day. Times are in UTC.
+# Runs twice a day. Times are in UTC.
 # You can also click "Run workflow" in the Actions tab to run it manually.
 on:
   schedule:
-    - cron: "0 20 * * *"   # once a day, ~4pm US Eastern
+    - cron: "0 16 * * *"   # ~12:00 PM US Eastern (lunch break)
+    - cron: "0 23 * * *"   # ~7:00 PM US Eastern (evening peak)
   workflow_dispatch: {}
 
 # Never let two runs overlap (prevents duplicate topics)
