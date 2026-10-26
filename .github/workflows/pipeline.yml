@@ -1,10 +1,12 @@
 name: YouTube Shorts Auto Pipeline
 
-# Runs twice a day. Times are in UTC.
+# Runs 4 times a day. Times are in UTC.
 # You can also click "Run workflow" in the Actions tab to run it manually.
 on:
   schedule:
+    - cron: "0 13 * * *"   # ~9:00 AM US Eastern (morning)
     - cron: "0 16 * * *"   # ~12:00 PM US Eastern (lunch break)
+    - cron: "0 19 * * *"   # ~3:00 PM US Eastern (after school/work)
     - cron: "0 23 * * *"   # ~7:00 PM US Eastern (evening peak)
   workflow_dispatch: {}
 
@@ -16,6 +18,7 @@ concurrency:
 jobs:
   make-and-upload-short:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
