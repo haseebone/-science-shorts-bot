@@ -1,0 +1,72 @@
+[
+  {
+    "title": "What Actually Causes D\u00e9j\u00e0 Vu?",
+    "script": "Ever felt like you\u2019ve lived a moment before? That super eerie feeling is called d\u00e9j\u00e0 vu, and science has a fascinating explanation for it! It\u2019s not a glitch in the matrix or a past life memory. Instead, it\u2019s a temporary brain hiccup. Usually, your brain processes short-term memories first before storing them long-term. But during d\u00e9j\u00e0 vu, a tiny delay in your neural pathways causes a new experience to bypass short-term storage and go straight into your long-term memory. Your brain accidentally misfiles a brand-new moment as an old memory, making it feel instantly familiar!",
+    "description": "Ever experienced d\u00e9j\u00e0 vu and wondered why? Here is the brain science behind that eerie feeling!",
+    "used_fallback": false,
+    "source_topic": "What actually causes the feeling of deja vu"
+  },
+  {
+    "title": "How Electric Eels Produce Electricity",
+    "script": "Did you know electric eels are basically swimming batteries? They don't use wires, so how do they pack a 600-volt punch? Electric eels have thousands of special muscle cells called electrocytes stacked together inside their bodies. Normally, these cells keep a negative charge. But when the eel spots prey, its brain sends a quick nerve signal that opens channel gates in these cells. Sodium ions instantly rush inside, reversing the electrical charge. When thousands of electrocytes fire at the exact same moment, they create a massive electric current. It\u2019s nature\u2019s ultimate self-defense tool!",
+    "description": "Discover how electric eels generate hundreds of volts of bio-electricity without any wires!",
+    "used_fallback": false,
+    "source_topic": "How do electric eels generate electricity"
+  },
+  {
+    "title": "How Noise-Canceling Headphones Work",
+    "script": "Ever wonder how noise-canceling headphones make the outside world vanish? It\u2019s not magic; it\u2019s physics! Tiny external microphones on the headphones constantly listen to the background noise around you. Sound travels in invisible waves, with peaks and valleys. The headphones\u2019 internal computer instantly analyzes that incoming noise wave and creates an inverted copy\u2014an 'anti-sound' wave\u2014where the peaks match the background noise's valleys. When these two opposing sound waves hit your ears simultaneously, they collide and cancel each other out completely. That destructive interference leaves you with pure, peaceful silence!",
+    "description": "Learn the incredible physics of active noise cancellation and how anti-sound waves work.",
+    "used_fallback": false,
+    "source_topic": "how do noise-canceling headphones block out sound"
+  },
+  {
+    "title": "How Smoke Detectors Catch Invisible Smoke",
+    "script": "How can a tiny smoke detector spot danger before you even see or smell it? Most household detectors use a clever trick involving radioisotopes. Inside, a tiny, safe piece of radioactive material called Americium creates a steady flow of electrical current between two metal plates. When microscopic smoke particles enter the chamber, they disrupt this invisible current by attaching to the charged ions and slowing them down. The detector notices this sudden drop in electrical current and instantly sounds the loud alarm. It\u2019s a tiny, silent guardian watching over your home!",
+    "description": "Here is how household smoke detectors use physics and safe radioisotopes to keep you safe!",
+    "used_fallback": false,
+    "source_topic": "how do smoke detectors detect invisible smoke particles"
+  },
+  {
+    "title": "Why Does Popcorn Pop?",
+    "script": "Have you ever wondered what turns a hard kernel of corn into a fluffy movie snack? Inside every popcorn kernel lies a tiny droplet of water surrounded by dense starch and a tough outer shell. As you heat the kernel, that trapped water warms up and turns into superheated steam. Pressure builds higher and higher until the outer shell can't take it anymore. POP! The shell explodes, and the gelatinized starch instantly inflates into a soft white foam, cooling down in a fraction of a second into the delicious treat we love!",
+    "description": "The secret science behind popcorn! Learn how heat and pressure turn kernels into delicious snacks.",
+    "used_fallback": false,
+    "source_topic": "Why does popcorn pop when heated"
+  },
+  {
+    "title": "How Fireflies Glow Without Heat",
+    "script": "Lightbulbs get hot when they shine, so why don't fireflies burn themselves up? Fireflies produce what scientists call 'cold light.' Inside their abdomen, fireflies combine a chemical called luciferin with oxygen, an enzyme named luciferase, and energy from their cells. This specific chemical reaction releases nearly 100% of its energy as visible light, wasting almost zero energy as heat. Regular lightbulbs lose most of their energy as heat, but fireflies are master engineers of efficient energy. They use these cool, glowing flashes to communicate and attract mates in the night sky!",
+    "description": "Explore how fireflies produce cold light through bioluminescence without generating burning heat.",
+    "used_fallback": false,
+    "source_topic": "How do fireflies produce light without creating heat"
+  },
+  {
+    "title": "Why Geysers Erupt on Schedule",
+    "script": "How can geysers like Old Faithful erupt on such a predictable schedule? It all comes down to deep underground plumbing! Magma deep beneath the Earth heats water trapped in narrow, vertical rock chambers. Because of the immense weight of the water column above, the bottom water gets way hotter than normal boiling temperatures without turning to steam. Eventually, the water at the top gets hot enough to bubble out, releasing the pressure below. That sudden pressure drop causes the superheated deep water to instantly flash into steam, blasting a massive column of water skyward!",
+    "description": "Uncover the geothermal physics behind natural geysers and their amazingly predictable eruptions.",
+    "used_fallback": false,
+    "source_topic": "How do geysers erupt on a predictable schedule"
+  },
+  {
+    "title": "Why Does Ice Float on Water?",
+    "script": "Most solid things sink in their liquid form, so why does ice float on water? It comes down to a unique quirk of hydrogen bonds! As liquid water cools down toward freezing, its molecules actually spread apart to form a rigid, hexagonal crystal lattice structure. This open crystalline structure makes solid ice about nine percent less dense than the liquid water beneath it. Because it\u2019s less dense, ice floats right to the top! This incredible phenomenon keeps oceans and lakes from freezing solid from the bottom up, preserving aquatic life every winter.",
+    "description": "Why does ice float instead of sinking? Learn how hydrogen bonds make solid ice less dense than water!",
+    "used_fallback": false,
+    "source_topic": "why does ice float on water instead of sinking"
+  },
+  {
+    "title": "How Airplanes Stay in the Air",
+    "script": "How do massive metal airplanes weighing hundreds of tons stay afloat in thin air? It\u2019s all thanks to wing shape and air pressure! Airplane wings are curved on top and flatter on the bottom. As the plane moves forward rapidly, air flows faster over the curved top, creating an area of low pressure above the wing. Meanwhile, higher pressure air pushes up from underneath the flatter bottom. This pressure difference creates an upward force called 'lift.' Push enough air downward with powerful engines, and lift overcomes gravity, keeping the giant plane airborne!",
+    "description": "Discover the aerodynamics of flight and how airplane wings generate lift to keep planes airborne.",
+    "used_fallback": false,
+    "source_topic": "how do airplanes generate enough lift to stay in the air"
+  },
+  {
+    "title": "How Microwave Ovens Heat Food",
+    "script": "How do microwave ovens heat your dinner so quickly without any real fire or flame? Microwaves use invisible electromagnetic radiation to target a specific molecule in your food: water! Inside the oven, a device called a magnetron generates radio waves that pass right through your plate and hit the water molecules inside your meal. These water molecules are polar, meaning they act like tiny magnets. The microwaves flip back and forth millions of times per second, forcing the water molecules to vibrate rapidly. That intense molecular friction creates heat instantly, cooking your food from within!",
+    "description": "Learn how microwave ovens use electromagnetic radiation and water friction to heat your meals.",
+    "used_fallback": false,
+    "source_topic": "how do microwave ovens heat food without external fire"
+  }
+]
