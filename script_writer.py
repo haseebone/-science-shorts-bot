@@ -14,57 +14,83 @@ import random
 import os
 import config
 
+GEMINI_MODEL = "gemini-3.8-flash"
 GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-flash-latest:generateContent?key=" + config.GEMINI_API_KEY
+    + GEMINI_MODEL
+    + ":generateContent?key="
+    + config.GEMINI_API_KEY
 )
 
-FALLBACK_SCRIPTS = [
-    {
-        "title": "Why Is the Sky Blue?",
-        "script": "Ever wonder why the sky is blue and not, say, purple or green? "
-                   "Sunlight looks white, but it's actually made of every color "
-                   "mixed together. As it hits our atmosphere, blue light waves "
-                   "are shorter and bounce around way more than red or yellow "
-                   "light. That scattered blue light is what reaches your eyes "
-                   "from every direction. That's why the whole sky looks blue, "
-                   "not just the spot where the sun is.",
-        "description": "The real science behind why the sky is blue. "
-                        "#science #shorts #education"
-    },
-    {
-        "title": "Why Does Ice Float?",
-        "script": "Most solids sink in their own liquid, but ice floats. Here's "
-                   "why. When water freezes, its molecules lock into a hexagonal "
-                   "pattern that actually takes up more space than liquid water, "
-                   "not less. That makes ice slightly less dense, so it floats "
-                   "instead of sinking. This one weird property is actually why "
-                   "lakes freeze from the top down, letting fish survive winter "
-                   "underneath.",
-        "description": "Ice floats because of one weird property of water. "
-                        "#science #shorts #education"
-    },
-    {
-        "title": "How Do Airplanes Actually Fly?",
-        "script": "A 90-ton airplane defying gravity seems impossible, but it "
-                   "comes down to wing shape. As air flows over the curved top "
-                   "of a wing and flatter bottom, it creates a pressure "
-                   "difference, pushing the wing upward. Combine that with "
-                   "engines pushing the plane forward fast enough, and that "
-                   "upward force, called lift, becomes strong enough to hold "
-                   "tons of metal in the sky.",
-        "description": "The real physics behind how planes fly. "
-                        "#science #shorts #education"
-    },
+FALLBACK_INTRO = [
+    "You might have wondered about this before, and today we're answering it. ",
+    "Here is a fascinating question you've probably asked yourself at least once. ",
+    "Most people don't know this, but the science behind it is genuinely cool. ",
+    "Ready for a quick dose of science that will change how you see the world? ",
 ]
 
+FALLBACK_OUTRO = [
+    "So next time someone asks, now you'll know the real answer. ",
+    "And that's the science behind it — pretty amazing, right? ",
+    "Now you know a little more about how our world actually works. ",
+]
+
+def title_case(topic: str) -> str:
+    """Make a plain topic string into a clean YouTube title."""
+    small = {"a", "an", "the", "and", "but", "or", "for", "nor", "of", "to", "in", "on", "at", "by", "with", "vs"}
+    words = str(topic).split()
+    if not words:
+        return "Science Explained"
+    out = []
+    for i, w in enumerate(words):
+        w = w.strip()
+        if not w:
+            continue
+        if i == 0 or i == len(words) - 1 or w.lower() not in small:
+            out.append(w[:1].upper() + w[1:])
+        else:
+            out.append(w.lower())
+    return " ".join(out)
+
 def get_fallback_script(topic: str) -> dict:
-    chosen = random.choice(FALLBACK_SCRIPTS)
-    result = dict(chosen)
-    result["source_topic"] = topic
-    result["source_url"] = ""
-    result["used_fallback"] = True
-    return result
+    """Build a topic-specific fallback script when Gemini is unavailable.
+
+    Unlike the old hard-coded fallbacks (which always produced one of only
+    3 identical videos), this generates a script whose title, script, and
+    description are all derived from the ACTUAL chosen topic — so every
+    video stays unique even when Gemini is down.
+    """
+    title = title_case(topic)
+    # Clean the topic into a "how/why" question for the opening line.
+    clean = topic.strip()
+    if clean and not clean[-1] in ".?!":
+        clean += "?"
+    else:
+        clean = topic.strip()
+    question = clean
+    # Use the last few words as a short takeaway label.
+    words = [w for w in str(topic).split() if w.lower() not in {
+        "why", "how", "does", "do", "the", "a", "an", "actually", "really"}]
+    subject = " ".join(words[-3:]) if words else "this"
+    script = (
+        random.choice(FALLBACK_INTRO)
+        + f"Today's question is simple: {question} "
+        + f"While the full explanation takes a book, the short version is "
+        f"fascinating and surprisingly easy to understand. Scientists have "
+        f"studied {subject} closely, and what they found changes how we see "
+        f"everyday life. "
+        + random.choice(FALLBACK_OUTRO)
+        + "Subscribe for a new science question answered every single day!"
+    )
+    description = (
+        f"{title}. The real science, explained simply. "
+        "#science #shorts #education #didyouknow"
+    )
+    return {
+        "title": title[:100],
+        "script": script,
+        "description": description,
+    }
 
 PROMPT_TEMPLATE = """You are writing a 30-45 second YouTube Shorts script for an \
 educational "Science Explained" channel targeting a USA audience. The topic/question is:
@@ -130,8 +156,9 @@ def main():
         result["used_fallback"] = False
     except Exception as e:
         print(f"\n  [!] Gemini unavailable after all retries: {e}")
-        print("  [!] Using a backup pre-written script instead.\n")
+        print("  [!] Using a topic-specific backup script instead.\n")
         result = get_fallback_script(topic["topic"])
+        result["used_fallback"] = True
 
     result["source_topic"] = topic["topic"]
     result["source_url"] = topic.get("url", "")

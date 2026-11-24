@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 
 GENERATED_TOPICS_FILE = "generated_topics.json"
 USED_TOPICS_FILE = "used_topics.json"
-GEMINI_MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]
+GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]
 LOW_POOL_THRESHOLD = 10   # ask Gemini for more when fewer unused topics remain
 GEMINI_BATCH_SIZE = 40
 
