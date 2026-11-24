@@ -22,6 +22,12 @@ GEMINI_URL = (
     + config.GEMINI_API_KEY
 )
 
+# ---- Script reserve (buffer) ------------------------------------------------
+# Keeps up to BUFFER_TARGET pre-made Gemini scripts committed to the repo.
+# When Gemini is down, the bot uploads from this reserve instead of a fallback.
+BUFFER_FILE = "script_buffer.json"
+BUFFER_TARGET = 10
+
 FALLBACK_INTRO = [
     "You might have wondered about this before, and today we're answering it. ",
     "Here is a fascinating question you've probably asked yourself at least once. ",
@@ -145,6 +151,133 @@ def clean_json_response(text: str) -> dict:
         text = text.replace("json", "", 1).strip()
     return json.loads(text)
 
+
+# ---- Script reserve helpers -------------------------------------------------
+
+def load_buffer() -> list:
+    """Read script_buffer.json (a list of pre-made script dicts)."""
+    if os.path.exists(BUFFER_FILE):
+        try:
+            with open(BUFFER_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return data
+        except Exception as e:
+            print(f"  [!] Could not read {BUFFER_FILE}: {e}")
+    return []
+
+
+def save_buffer(buffer: list):
+    with open(BUFFER_FILE, "w", encoding="utf-8") as f:
+        json.dump(buffer, f, indent=2)
+
+
+def pop_script_from_buffer() -> dict:
+    """Take the first script off the reserve. Returns None if empty."""
+    buf = load_buffer()
+    if not buf:
+        return None
+    script = buf.pop(0)
+    save_buffer(buf)
+    return script
+
+
+def make_batch_script_prompt(topics: list) -> str:
+    """Ask Gemini for multiple scripts in ONE call (cheap, fewer requests)."""
+    topic_list = "\n".join(f"- {t}" for t in topics)
+    return (
+        "Write a 30-45 second YouTube Shorts explainer script for EACH of these "
+        "science topics. Use a friendly teacher tone, 70-100 words each, with a "
+        "clear hook and takeaway. Target audience: USA general audience.\n\n"
+        "Topics:\n" + topic_list + "\n\n"
+        "Respond ONLY with a JSON array of objects, one per topic, in the SAME "
+        "order. Each object must have exactly these keys:\n"
+        '{"title": "...", "script": "...", "description": "..."}\n'
+        "No extra text, no markdown fences, no commentary."
+    )
+
+
+def generate_script_batch(topics: list) -> list:
+    """Call Gemini once to make scripts for several topics. Returns list of dicts."""
+    if not topics:
+        return []
+    prompt = make_batch_script_prompt(topics)
+    try:
+        raw = call_gemini(prompt)
+        text = raw.strip()
+        if text.startswith("```"):
+            # strip any code fences around the JSON
+            import re
+            text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
+        data = json.loads(text)
+        if not isinstance(data, list):
+            print("  [!] Gemini batch reply was not a list.")
+            return []
+        out = []
+        for item in data:
+            if isinstance(item, dict) and item.get("title") and item.get("script"):
+                item.setdefault("used_fallback", False)
+                out.append(item)
+        return out
+    except Exception as e:
+        print(f"  [!] Batch Gemini call failed: {e}")
+        return []
+
+
+def refill_buffer():
+    """Top the reserve back up to BUFFER_TARGET when it drops below 10."""
+    buf = load_buffer()
+    missing = BUFFER_TARGET - len(buf)
+    if missing <= 0:
+        return
+    # Only add fresh topics that aren't already used or already scripted.
+    used = []
+    if os.path.exists("used_topics.json"):
+        try:
+            with open("used_topics.json", "r", encoding="utf-8") as f:
+                used = json.load(f)
+        except Exception:
+            used = []
+    existing_titles = {s.get("title", "").lower() for s in buf}
+    existing_sources = {s.get("source_topic", "").lower() for s in buf}
+    # Pull candidate topics from generated pool + fallback list (best-effort).
+    candidates = []
+    for fname in ("generated_topics.json",):
+        if os.path.exists(fname):
+            try:
+                with open(fname, "r", encoding="utf-8") as f:
+                    candidates += [str(x) for x in json.load(f)]
+            except Exception:
+                pass
+    pool = []
+    for t in candidates:
+        tl = t.lower()
+        if tl in [u.lower() for u in used]:
+            continue
+        if tl in existing_sources or tl in existing_titles:
+            continue
+        pool.append(t)
+    # Only request as many as we need (limit batch to a reasonable size).
+    need = min(missing, len(pool))
+    if need <= 0:
+        print(f"  [i] No fresh topics available to refill script buffer.")
+        return
+    batch_topics = pool[:need]
+    print(f"  [i] Refilling script buffer: asking Gemini for {need} script(s)...")
+    new_scripts = generate_script_batch(batch_topics)
+    # attach the source topic so we never re-use one
+    for i, sc in enumerate(new_scripts):
+        if i < len(batch_topics):
+            sc["source_topic"] = batch_topics[i]
+    if new_scripts:
+        buf += new_scripts
+        buf = buf[-BUFFER_TARGET * 2:]
+        save_buffer(buf)
+        print(f"  [+] Buffer now has {len(buf)} script(s) ready.")
+    else:
+        print("  [!] Gemini still not available — buffer not refilled.")
+
+
 def main():
     topic = load_next_topic()
     print(f"Writing script for topic: {topic['topic']}")
@@ -154,17 +287,33 @@ def main():
         raw = call_gemini(prompt)
         result = clean_json_response(raw)
         result["used_fallback"] = False
+        result["source_topic"] = topic["topic"]
+        result["source_url"] = topic.get("url", "")
+        print("  [+] Gemini made a script for today.")
     except Exception as e:
         print(f"\n  [!] Gemini unavailable after all retries: {e}")
-        print("  [!] Using a topic-specific backup script instead.\n")
-        result = get_fallback_script(topic["topic"])
-        result["used_fallback"] = True
-
-    result["source_topic"] = topic["topic"]
-    result["source_url"] = topic.get("url", "")
+        print("  [!] Trying the script reserve (buffer) first...\n")
+        result = pop_script_from_buffer()
+        if result is not None:
+            result = dict(result)
+            result["used_fallback"] = True
+            result["source_topic"] = topic["topic"]
+            result["source_url"] = topic.get("url", "")
+            print("  [+] Used a reserved script from the buffer (topic matched to today's topic).")
+        else:
+            print("  [!] Buffer is empty — using topic-specific backup script instead.\n")
+            result = get_fallback_script(topic["topic"])
+            result["used_fallback"] = True
+            result["source_topic"] = topic["topic"]
+            result["source_url"] = topic.get("url", "")
 
     with open("script.json", "w") as f:
         json.dump(result, f, indent=2)
+
+    # Keep the reserve topped up. Runs whenever Gemini worked OR a buffered
+    # script was consumed (buffer shrank). Never refills by stashing today's
+    # used script — always requests FRESH scripts for unused topics.
+    refill_buffer()
 
     print("\nTitle:", result["title"])
     print("\nScript:\n", result["script"])
