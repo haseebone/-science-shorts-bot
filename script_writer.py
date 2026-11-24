@@ -172,12 +172,23 @@ def save_buffer(buffer: list):
         json.dump(buffer, f, indent=2)
 
 
-def pop_script_from_buffer() -> dict:
-    """Take the first script off the reserve. Returns None if empty."""
+def pop_script_from_buffer(topic: str = "") -> dict:
+    """Take a script off the reserve. Returns None if empty.
+
+    Prefers a script whose source_topic matches the current topic so the
+    uploaded video stays relevant to the topic that was picked today.
+    """
     buf = load_buffer()
     if not buf:
         return None
-    script = buf.pop(0)
+    chosen_idx = 0
+    if topic:
+        tl = str(topic).lower()
+        for i, s in enumerate(buf):
+            if str(s.get("source_topic", "")).lower() == tl:
+                chosen_idx = i
+                break
+    script = buf.pop(chosen_idx)
     save_buffer(buf)
     return script
 
@@ -293,7 +304,7 @@ def main():
     except Exception as e:
         print(f"\n  [!] Gemini unavailable after all retries: {e}")
         print("  [!] Trying the script reserve (buffer) first...\n")
-        result = pop_script_from_buffer()
+        result = pop_script_from_buffer(topic["topic"])
         if result is not None:
             result = dict(result)
             result["used_fallback"] = True
@@ -310,10 +321,11 @@ def main():
     with open("script.json", "w") as f:
         json.dump(result, f, indent=2)
 
-    # Keep the reserve topped up. Runs whenever Gemini worked OR a buffered
-    # script was consumed (buffer shrank). Never refills by stashing today's
-    # used script — always requests FRESH scripts for unused topics.
-    refill_buffer()
+    # Keep the reserve topped up. Only when Gemini is up (today's call
+    # succeeded) — if it's down, a refill attempt would just fail and waste
+    # the job's time. Never refills by stashing today's used script.
+    if not result.get("used_fallback"):
+        refill_buffer()
 
     print("\nTitle:", result["title"])
     print("\nScript:\n", result["script"])
