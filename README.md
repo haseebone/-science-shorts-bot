@@ -1,4 +1,4 @@
-# Fully Automated YouTube Shorts Channel #2 — "Curious Minds Daily" (Science Explained)
+# Fully Automated YouTube Shorts Channel #1 — "Curious Minds Daily" (Science Explained)
 
 Same system as your Facts channel, new topic, new channel. Since you already
 did this once, this will go much faster.
